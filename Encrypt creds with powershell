@@ -1,0 +1,3 @@
+ # Prompt for credentials and encrypt them
+$credential = Get-Credential
+$credential.Password | ConvertFrom-SecureString | Set-Content "C:\Path\To\EncryptedCredentials.txt"
