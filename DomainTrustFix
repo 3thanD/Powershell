@@ -1,0 +1,6 @@
+$keys=get-credential
+
+Reset-ComputerMachinePassword -credential $keys
+
+
+
