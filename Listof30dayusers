@@ -1,0 +1,2 @@
+get-aduser -filter * -Properties * | select name,userpricipalname,lastlogondate,enabled,whenCreated,distinguishedName  | sort lastlogondate | export-csv c:\Documents\30_day_users2.csv
+
