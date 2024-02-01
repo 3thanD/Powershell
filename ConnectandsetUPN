@@ -1,0 +1,12 @@
+>[!NOTE]  
+>Office 365 cloud	Command
+>Office 365 Worldwide (+GCC)	Connect-MsolService
+>Office 365 operated by 21 Vianet	Connect-MsolService -AzureEnvironment AzureChinaCloud
+>Office 365 Germany	Connect-MsolService -AzureEnvironment AzureGermanyCloud
+>Office 365 U.S. Government DoD and Office 365 U.S. Government GCC High	Connect-MsolService -AzureEnvironment USGovernment
+
+Import-Module  AzureAD
+
+Connect-MsolService
+
+set-msoluser -UserPrincipalName (Username)  -ImmutableId (New ImmutableID)
