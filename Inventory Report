@@ -1,0 +1,36 @@
+Inventory Script (PowerShell) - Windows Domain Environment
+
+#Date
+$Date = (Get-Date -Format "MM/dd/yyyy")
+$Time = (Get-Date -Format "HH:MM:ss")
+$DandT = $Date + " " + $Time
+
+#User
+$User= $env:UserName
+
+#Local Admins
+[String]$LocalAdmins = Get-LocalGroupMember -Group "Administrators" | select -ExpandProperty Name
+
+#Windows Details
+$OSName = Get-CimInstance Win32_OperatingSystem | select -ExpandProperty  Caption
+$OSBuild = Get-CimInstance Win32_OperatingSystem | select -ExpandProperty  BuildNumber
+$MachineName = Get-CimInstance Win32_OperatingSystem | select -ExpandProperty  CSName
+$Domain = Get-CimInstance Win32_ComputerSystem | select -ExpandProperty Domain 
+
+#Device
+$Make = Get-CimInstance Win32_ComputerSystem | select -ExpandProperty Manufacturer
+$Model = Get-CimInstance Win32_ComputerSystem | select -ExpandProperty Model 
+$SerialNumber = Get-WmiObject win32_SystemEnclosure | select -ExpandProperty serialnumber
+
+New-Object -TypeName PSCustomObject -Property @{
+OSName = $OSName
+OSBuild = $OSBuild
+MachineName = $MachineName
+Domain = $Domain
+Make = $Make
+Model = $Model
+SerialNumber = $SerialNumber
+#LocalAdmins = $LocalAdmins
+Date = $DandT
+User = $User
+} | Select-Object Date,User,MachineName,Domain,Make,Model,SerialNumber,OSName,OSBuild  | Export-Csv -Path "[FilePath]Inventory.csv" -NoTypeInformation -Append
