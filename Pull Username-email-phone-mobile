@@ -1,0 +1,3 @@
+Get-ADUser -Filter 'enabled -eq $true' -Properties EmailAddress,MobilePhone,telephoneNumber |
+    Select-Object Name,EmailAddress,MobilePhone,telephoneNumber |
+    Export-CSV -Path "%outputpath%" -NoTypeInformation
