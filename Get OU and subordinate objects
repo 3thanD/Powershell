@@ -1,0 +1,38 @@
+# Import the Active Directory module
+Import-Module ActiveDirectory
+
+# Get all OUs in the domain
+$ous = Get-ADOrganizationalUnit -Filter * -Properties CanonicalName |
+    Select-Object CanonicalName, DistinguishedName |
+    Sort-Object CanonicalName
+
+# Initialize an empty array to store OU details
+$ouDetails = @()
+
+# Iterate through each OU
+foreach ($ou in $ous) {
+    $ouPath = $ou.DistinguishedName
+    $ouName = Split-Path $ou.CanonicalName -Leaf
+
+    # Get all objects (users, groups, etc.) directly under this OU
+    $objects = Get-ADObject -SearchBase $ouPath -SearchScope OneLevel -Filter * |
+        Where-Object { $_.ObjectClass -ne 'organizationalUnit' } |
+        Select-Object Name, DistinguishedName, ObjectClass
+
+    # Add OU details and objects to the array
+    foreach ($object in $objects) {
+        $ouDetails += [PSCustomObject]@{
+            'OUName'          = $ouName
+            'OUCanonicalName' = $ou.CanonicalName
+            'ObjectName'      = $object.Name
+            'ObjectDN'        = $object.DistinguishedName
+            'ObjectType'      = $object.ObjectClass
+        }
+    }
+}
+
+# Export the OU details to a CSV file
+$ouDetails | Export-Csv -Path C:\OU_Object_Details.csv -NoTypeInformation
+
+# Confirm completion
+Write-Host "OU details exported to C:\OU_Object_Details.csv"
