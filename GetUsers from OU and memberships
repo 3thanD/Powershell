@@ -1,0 +1,26 @@
+# Specify the distinguished name of your target OU
+$ou = "OU=YourSpecificOU,DC=domain,DC=com"
+
+# Get all users in the specified OU
+$users = Get-ADUser -Filter * -SearchBase $ou | Select-Object -ExpandProperty SamAccountName
+
+# Create an array to store the results
+$results = @()
+
+# Iterate through each user and check their group memberships
+foreach ($user in $users) {
+    $memberOfGroups = Get-ADPrincipalGroupMembership -Identity $user | Where-Object { $_.DistinguishedName -like "$ou*" }
+    if ($memberOfGroups.Count -gt 0) {
+        $groupNames = $memberOfGroups | ForEach-Object { $_.Name }
+        $result = [PSCustomObject]@{
+            UserName = $user.SamAccountName
+            GroupMemberships = $groupNames -join ', '
+        }
+        $results += $result
+    }
+}
+
+# Export the results to a CSV file
+$results | Export-Csv -Path "C:\Path\To\Your\OutputFile.csv" -NoTypeInformation
+
+Write-Host "Results exported to C:\Path\To\Your\OutputFile.csv"
