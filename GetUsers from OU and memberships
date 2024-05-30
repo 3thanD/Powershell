@@ -1,26 +1,21 @@
 # Specify the distinguished name of your target OU
-$ou = "OU=YourSpecificOU,DC=domain,DC=com"
+$ou = "%OU-Ptah%"
 
-# Get all users in the specified OU
-$users = Get-ADUser -Filter * -SearchBase $ou | Select-Object -ExpandProperty SamAccountName
+# Get all security groups in the specified OU
+$groups = Get-ADGroup -Filter {GroupCategory -eq 'Security'} -SearchBase $ou
 
-# Create an array to store the results
-$results = @()
-
-# Iterate through each user and check their group memberships
-foreach ($user in $users) {
-    $memberOfGroups = Get-ADPrincipalGroupMembership -Identity $user | Where-Object { $_.DistinguishedName -like "$ou*" }
-    if ($memberOfGroups.Count -gt 0) {
-        $groupNames = $memberOfGroups | ForEach-Object { $_.Name }
-        $result = [PSCustomObject]@{
-            UserName = $user.SamAccountName
-            GroupMemberships = $groupNames -join ', '
+# Iterate through each group and get its members
+foreach ($group in $groups) {
+    $members = Get-ADGroupMember -Identity $group | Where-Object { $_.objectClass -eq 'user' }
+    if ($members.Count -gt 0) {
+        Write-Host "Security Group: $($group.Name)"
+        foreach ($member in $members) {
+            Write-Host "  - User: $($member.SamAccountName)"
         }
-        $results += $result
     }
 }
 
-# Export the results to a CSV file
-$results | Export-Csv -Path "C:\Path\To\Your\OutputFile.csv" -NoTypeInformation
+# You can also export the results to a CSV file if needed
+$results | Export-Csv -Path "%export path%" -NoTypeInformation
 
-Write-Host "Results exported to C:\Path\To\Your\OutputFile.csv"
+
