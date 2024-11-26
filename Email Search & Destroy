@@ -1,0 +1,11 @@
+#Connnect to Compliance Center
+Connect-IPPSSession
+ 
+#Create Compliance search criteria. Additional criteria available:. %CHANGE-ME_REMOVE-PERCENTAGE%
+$Search=New-ComplianceSearch -Name "%SEARCHNAME%" -ExchangeLocation All -ContentMatchQuery '(From:%SENDER%) AND (Subject:"%SUBJECT%")'                                             
+ 
+#Start Search
+Start-ComplianceSearch -Identity $Search.Identity                                                             
+ 
+#Delete what search found. Go to Office 365 Compliance center if you want to preview results. Search will need to run before command will complete.
+New-ComplianceSearchAction -SearchName "%Subject of email here%" -Purge -PurgeType SoftDelete   
