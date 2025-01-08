@@ -1,0 +1,19 @@
+# Import the Active Directory module
+Import-Module ActiveDirectory
+ 
+# Get all computers in the domain
+$computers = Get-ADComputer -Filter * -Property Name, SID
+ 
+# Group computers by SID
+$groupedComputers = $computers | Group-Object -Property SID
+ 
+# Filter groups with more than one computer (indicating duplicate SIDs)
+$duplicateComputers = $groupedComputers | Where-Object { $_.Count -gt 1 }
+ 
+# Display the results
+foreach ($group in $duplicateComputers) {
+    Write-Host "SID: $($group.Name)"
+    foreach ($computer in $group.Group) {
+        Write-Host "  Computer Name: $($computer.Name)"
+    }
+}
