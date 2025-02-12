@@ -1,0 +1,85 @@
+Redirecting user folders such as Downloads and Documents to OneDrive for Business can help centralize user data, facilitate easier backups, and support seamless access across devices. This redirection can be achieved through Group Policy for organizations using a Windows environment. Here’s a step-by-step guide on how to set it up: 
+ 
+Pre-requisites: 
+- Ensure users have active OneDrive for Business accounts and the OneDrive client is installed on all user PCs. 
+- Make sure you have administrative access to the Group Policy Management Console (GPMC). 
+ 
+Steps to Redirect Downloads and Documents to OneDrive: 
+ 
+1. Identify or Create the OneDrive Known Folder Move (KFM) GPO 
+If you don't already have a GPO for OneDrive settings, you'll need to create one. Open the GPMC, right-click the organizational unit (OU) where the user accounts reside, and choose to create a new GPO. 
+ 
+2. Edit the GPO 
+Right-click the GPO you’ve identified or created for OneDrive redirection and select "Edit". 
+ 
+3. Navigate to User Configuration 
+Go to `User Configuration` -> `Policies` -> `Windows Settings` -> `Folder Redirection`. 
+ 
+4. Set up Redirection for Documents and Downloads 
+- Right-click on "Documents", go to "Properties", under the "Target" tab, select "Basic - Redirect everyone's folder to the same location". 
+- In the "Target folder location" section, select "Redirect to the following location". 
+- In the "Root Path", enter the path to the OneDrive folder. It usually follows this pattern: `%USERPROFILE%\OneDrive - [CompanyName]\Documents`. 
+- Repeat similar steps for the "Downloads" folder, but direct it to `%USERPROFILE%\OneDrive - [CompanyName]\Downloads`. 
+ 
+5. **Ensure Seamless Redirection 
+- Go to the "Settings" tab in the properties of each folder you are redirecting. 
+- Ensure "Move the contents of [Folder] to the new location" is checked to migrate existing data. 
+- Consider policy options like "Also apply redirection policy to Windows 2000, Windows 2000 Server, Windows XP, and Windows Server 2003 operating systems" and "Redirect the folder back to the local userprofile location when policy is removed" based on your organization's needs and infrastructure. 
+ 
+6. Apply and Test the GPO 
+- Close the Group Policy Management Editor and link the GPO to the appropriate OU(s). 
+- It might be wise to test the policy with a small group of users before deploying widely. Use "gpupdate /force" on a test machine or wait for the natural Group Policy refresh cycle. 
+- Verify that the redirection works correctly by checking that files saved to the Documents and Downloads folders are indeed redirected to the corresponding OneDrive folders. 
+ 
+Important Considerations: 
+- User Notification: Inform users about the change as it will affect where their files are saved by default. 
+- Backup Existing Data: Ensure you have a backup strategy for existing data in the Documents and Downloads folders before applying the policy widely. 
+- OneDrive Setup: Users must be signed into OneDrive for the redirection to work. Ensure the OneDrive setup is completed on all user PCs. 
+- Network Impact: Redirecting significant amounts of data to OneDrive can impact network bandwidth. Plan the deployment accordingly, possibly in stages or during off-peak hours. 
+ 
+Redirecting common folders to OneDrive via GPO can significantly enhance data mobility and security. It ensures that user data is stored in a centralized, cloud-based location, making it easier to manage, access, and back up. 
+ 
+ 
+
+ 
+
+To clear out the Downloads folder for all users on a Windows system using Group Policy, you can utilize a PowerShell script and deploy it as a logon script via Group Policy Object (GPO). This approach will ensure that the Downloads folder is cleared every time a user logs on to their computer. 
+ 
+Here's how to set it up: 
+ Step 1: Create the PowerShell Script 
+First, create a PowerShell script that will clear out the Downloads folder. You can use the following script as an example. Save it with a `.ps1` extension, for example, `ClearDownloads.ps1’. 
+ 
+# PowerShell script to clear the Downloads folder 
+ 
+Get the path to the current user's Downloads folder 
+$downloadsPath = [Environment]::GetFolderPath("Downloads") 
+ 
+# Check if the Downloads folder exists 
+if (Test-Path $downloadsPath) { 
+   # Remove all items in the Downloads folder, including subfolders and files, without prompting for confirmation 
+   Get-ChildItem -Path $downloadsPath -Recurse | Remove-Item -Force -Recurse 
+} 
+``` 
+ 
+Step 2: Store the Script 
+Place the script on a shared network location where all user accounts have read access, or store it locally on the user's machine if it applies to a small number of computers. 
+ 
+Step 3: Create a GPO to Run the Script at Logon 
+1. Open the **Group Policy Management Console (GPMC)** on a computer with the Group Policy Management feature installed. 
+2. Right-click the organizational unit (OU) where the user accounts reside, and select **Create a GPO in this domain, and Link it here...** 
+3. Name the GPO something relevant, like **Clear Downloads Folder at Logon**. 
+4. Right-click the newly created GPO and select **Edit** to open the Group Policy Management Editor. 
+5. Navigate to **User Configuration** -> **Policies** -> **Windows Settings** -> **Scripts (Logon/Logoff)**. 
+6. Double-click **Logon** in the right pane. 
+7. In the Logon Properties dialog, click **PowerShell Scripts** tab, then click **Add...** to add a new script. 
+8. Click **Browse** to select the PowerShell script you created (`ClearDownloads.ps1`), then click **OK**. 
+9. Apply and OK out of all dialog boxes. 
+ 
+Step 4: Test the GPO 
+Before deploying widely, link the GPO to a limited OU for testing or use security filtering to apply it to a subset of users. This ensures that the script operates as expected without unintended consequences. 
+ 
+Important Considerations 
+- **Data Loss**: This script will delete all contents of the Downloads folder without recovery options. Ensure users are aware of this policy to prevent loss of important files. 
+- **Execution Policy**: Ensure that the PowerShell execution policy on the client computers allows the execution of scripts. You may need to adjust this via another GPO or configure it manually. 
+ 
+This approach automates the process of clearing the Downloads folder for users within your domain, helping maintain cleanliness and potentially freeing up disk space on user machines. 
