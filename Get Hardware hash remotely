@@ -1,0 +1,86 @@
+# SCRIPT TO AUTOMATICALLY GATHER AUTOPILOT HARDWARE HASHES FROM COMPUTERS IN AN OU
+
+# Import the Active Directory module to interact with AD
+Import-Module ActiveDirectory
+
+# Install the official Autopilot script module from the PowerShell Gallery.
+# This is a one-time step. Uncomment the line below if the module is not installed.
+# Install-Module -Name Get-WindowsAutopilotInfo -Force -Verbose
+
+# Define the Organizational Unit (OU) to query for computers
+# IMPORTANT: Replace "OU=Computers,DC=example,DC=com" with your actual OU path.
+$OU = "OU=Computers,DC=corp,DC=fabrikam,DC=com"
+
+# Define the path for the output CSV file
+$CSVFilePath = "C:\HardwareHashes_Autopilot.csv"
+
+# Get all computer objects in the specified OU
+# The -Filter * retrieves all computer objects.
+Write-Host "Searching for computers in OU: $OU"
+$Computers = Get-ADComputer -Filter * -SearchBase $OU -Property Name
+
+# Initialize an array to store the hardware hash results
+$AutopilotHashes = @()
+
+# Loop through each computer to get the hardware hash
+foreach ($Computer in $Computers) {
+    Write-Host "Attempting to retrieve hardware hash for $($Computer.Name)..." -ForegroundColor Yellow
+    
+    try {
+        # Check if the WinRM service is running and configured for remote access.
+        # This is a prerequisite for Invoke-Command.
+        if (-not (Test-WSMan -ComputerName $Computer.Name -ErrorAction SilentlyContinue)) {
+            Write-Warning "Could not connect to $($Computer.Name). The most common reason for this is that Windows Remote Management (WinRM) is not enabled or the firewall is blocking it."
+            Write-Warning "To fix this, log on to $($Computer.Name) and run the following command as an administrator: Enable-PSRemoting -Force"
+            continue
+        }
+
+        # Use Invoke-Command to run the Get-WindowsAutopilotInfo script on the remote computer.
+        # This is the official and correct way to get the hardware hash.
+        # The script is run as a single command, ensuring all dependencies are met.
+        # The output is captured as a temporary file on the remote computer and then read back.
+        $Script = {
+            # Change directory to C:\ to avoid path issues
+            cd C:\
+            # Check if the Autopilot module is installed on the remote machine.
+            # If not, install it. This ensures the script works without pre-configuration.
+            if (-not (Get-Module -Name Get-WindowsAutopilotInfo -ListAvailable)) {
+                Install-Module -Name Get-WindowsAutopilotInfo -Force -Verbose -Scope AllUsers
+            }
+            # Run the official script to get the Autopilot hash and save to a temporary file
+            $ScriptResult = Get-WindowsAutopilotInfo.ps1 -OutputFile AutopilotHardwareHash.csv
+        }
+
+        # Invoke the script on the remote computer
+        Invoke-Command -ComputerName $Computer.Name -ScriptBlock $Script -ErrorAction Stop
+
+        # Wait for a moment to ensure the file is created and available
+        Start-Sleep -Seconds 5
+
+        # Copy the temporary CSV file from the remote computer to the local machine
+        Copy-Item -Path "\\$($Computer.Name)\C$\AutopilotHardwareHash.csv" -Destination ".\$($Computer.Name)_HardwareHash.csv" -Force
+
+        # Import the data from the newly copied CSV file
+        $HashData = Import-Csv -Path ".\$($Computer.Name)_HardwareHash.csv"
+        
+        # Add a new property with the computer's name
+        $HashData | Add-Member -MemberType NoteProperty -Name "ComputerName" -Value $Computer.Name -Force
+
+        # Add the imported hash data to our main array
+        $AutopilotHashes += $HashData
+        
+        # Clean up the temporary files
+        Remove-Item -Path "\\$($Computer.Name)\C$\AutopilotHardwareHash.csv" -ErrorAction SilentlyContinue
+        Remove-Item -Path ".\$($Computer.Name)_HardwareHash.csv" -ErrorAction SilentlyContinue
+
+        Write-Host "Successfully retrieved hardware hash for $($Computer.Name)." -ForegroundColor Green
+    } catch {
+        # Catch and report errors, such as computers that are offline or cannot be reached.
+        Write-Warning "Could not retrieve hardware hash for $($Computer.Name): $_"
+    }
+}
+
+# Export the final results to a single CSV file
+$AutopilotHashes | Export-Csv -Path $CSVFilePath -NoTypeInformation -Force
+
+Write-Host "Process complete. Hardware hashes for eligible computers have been saved to $CSVFilePath" -ForegroundColor Cyan
