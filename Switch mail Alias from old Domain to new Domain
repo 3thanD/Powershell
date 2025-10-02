@@ -1,0 +1,44 @@
+Import-Module ActiveDirectory
+ 
+$newDomain = "cityoftaylormi.gov"   # New domain
+$oldDomain = "ci.taylor.mi.us"       # Current domain you want to replace
+ 
+# Get all AD users with a mail attribute
+#$users = Get-ADUser -Filter {mail -like "*"} -Properties mail, proxyAddresses
+$users = Get-ADUser -Filter {mail -like "*"} -Properties mail, proxyAddresses
+ 
+foreach ($user in $users) {
+   if ($user.mail) {
+       $mailUsername = ($user.mail -split "@")[0]
+ 
+       # Build new primary address
+       $newPrimary = "SMTP:$mailUsername@$newDomain"
+       $oldPrimary = "SMTP:$user.mail"
+ 
+       # Preserve existing proxy addresses
+       $currentProxies = @($user.proxyAddresses)
+ 
+       # Remove any existing primary SMTP (uppercase) entry
+       $currentProxies = $currentProxies | ForEach-Object { $_ -replace '^SMTP:', 'smtp:' }
+ 
+       # Add the old primary as an alias if it's not already present
+       $oldAlias = "smtp:$mailUsername@$oldDomain"
+       if ($currentProxies -notcontains $oldAlias) {
+           $currentProxies += $oldAlias
+       }
+ 
+       # Add the new primary if it's not already present
+       if ($currentProxies -notcontains $newPrimary) {
+           $currentProxies += $newPrimary
+       }
+ 
+       # Update AD user
+       Write-Host "Updating $($user.SamAccountName): setting mail to $($mailUsername)@$newDomain"
+       Set-ADUser -Identity $user.DistinguishedName `
+                  -EmailAddress "$mailUsername@$newDomain" `
+                  -Add @{ proxyAddresses = $oldAlias }
+       Set-ADuser -Identity $user.DistinguishedName -add @{ proxyAddresses = $newPrimary }
+   } else {
+       Write-Host "User $($user.SamAccountName) has no mail attribute. Skipping..."
+   }
+}
