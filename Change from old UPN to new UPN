@@ -1,11 +1,14 @@
 First you must at the new UPN to ADDS by right clicking the domain name and selecting properties. 
 
-This command finds users with a specific UPN then replaces them with the new UPN you set up in ADDS: 
+#This command shows you a formatted table of UPN's in the selected OU
+Get-ADUser -Filter * -SearchBase "Distinguished Name" | Format-Table Name, UserPrincipalName
+
+#This command finds users with a specific UPN then replaces them with the new UPN you set up in ADDS: 
 $LocalUsers = Get-ADUser -Filter {UserPrincipalName -like '*UPN to be Replaced'} -SearchBase "Distinguished Name of OU in Active Directory" -Properties UserPrincipalName -ResultSetSize $null
 
 $LocalUsers | foreach {$newUpn = $_.UserPrincipalName.Replace("Old UPN","New UPN"); $_ | Set-ADUser -UserPrincipalName $newUpn}
 
-Once completed use this Test command to verify the changes were made: 
+#Once completed use this Test command to verify the changes were made: 
 Get-ADUser -Filter {UserPrincipalName -like '*Any UPN'} -SearchBase "Distinguished name of where you are searching" | Format-Table Name, UserPrincipalName
 
 
