@@ -1,0 +1,131 @@
+This Script will take any mail enabled security groups that exist in your environment and if you create O365 groups with the same name (alias) it will add the members of the MESG to the 365 group. 
+
+PS C:\WINDOWS\system32> Connect-ExchangeOnline
+
+----------------------------------------------------------------------------------------
+This V3 EXO PowerShell module contains new REST API backed Exchange Online cmdlets which doesn't require WinRM for Client-Server communication. You can now run these cmdlets after turning off
+ WinRM Basic Auth in your client machine thus making it more secure. 
+
+Unlike the EXO* prefixed cmdlets, the cmdlets in this module support full functional parity with the RPS (V1) cmdlets.
+
+V3 cmdlets in the downloaded module are resilient to transient failures, handling retries and throttling errors inherently. 
+
+REST backed EOP and SCC cmdlets are also available in the V3 module. Similar to EXO, the cmdlets can be run without WinRM basic auth enabled. 
+
+For more information check https://aka.ms/exov3-module
+
+The latest EXO V3.7 module is released which includes significant memory improvements. You’re currently using an older version and we recommend upgrading to V3.7 for enhanced performance.
+----------------------------------------------------------------------------------------
+
+
+PS C:\WINDOWS\system32> <#
+.SYNOPSIS
+    Migrates members from Mail-Enabled Security Groups (MESGs) to corresponding
+    Microsoft 365 Groups.
+
+.DESCRIPTION
+    This script performs the following actions:
+    1. Gathers all Microsoft 365 Groups into a hashtable for fast lookup.
+    2. Gathers all Mail-Enabled Security Groups.
+    3. Loops through each MESG.
+    4. Finds a "corresponding" M365 Group based on a matching 'Alias'.
+    5. If a match is found, it gets all members from the MESG.
+    6. It then adds each member to the corresponding M365 Group.
+    7. The script provides verbose output and handles common errors, like a member
+       already existing in the target group.
+
+.NOTES
+    - Run Connect-ExchangeOnline before executing this script.
+    - Assumes you have Exchange Administrator or Global Administrator rights.
+    - CRITICAL: This script assumes the "corresponding" M365 Group has the
+      EXACT SAME ALIAS as the source Mail-Enabled Security Group.
+      If your mapping is different, you must modify the logic in the main loop.
+#>
+
+Write-Host "Starting member sync process..." -ForegroundColor Cyan
+
+# --- STEP 1: GATHER ALL M365 GROUPS ---
+# We store them in a hashtable using their Alias as the key for fast lookups.
+Write-Host "Gathering all Microsoft 365 Groups..." -ForegroundColor Green
+try {
+    $m365Groups = Get-UnifiedGroup -ResultSize Unlimited
+    $m365GroupsHashTable = $m365Groups | Group-Object -Property Alias -AsHashTable -AsString
+    Write-Host "Successfully found $($m365Groups.Count) M365 Groups."
+} catch {
+    Write-Warning "Failed to get M365 Groups. Error: $($_.Exception.Message)"
+    # Stop the script if we can't get the groups
+    return
+}
+
+# --- STEP 2: GATHER ALL MAIL-ENABLED SECURITY GROUPS ---
+Write-Host "Gathering all Mail-Enabled Security Groups (MESGs)..." -ForegroundColor Green
+try {
+    # RecipientTypeDetails 'MailUniversalSecurityGroup' is the specific filter for MESGs
+    $mesgGroups = Get-DistributionGroup -Filter { RecipientTypeDetails -eq 'MailUniversalSecurityGroup' } -ResultSize Unlimited
+    Write-Host "Successfully found $($mesgGroups.Count) MESGs to process."
+} catch {
+    Write-Warning "Failed to get Mail-Enabled Security Groups. Error: $($_.Exception.Message)"
+    # Stop the script if we can't get the groups
+    return
+}
+
+Write-Host "-----------------------------------------------------"
+Write-Host "IMPORTANT: Script will now check for corresponding groups based on matching 'Alias'." -ForegroundColor Yellow
+Write-Host "-----------------------------------------------------"
+
+# --- STEP 3: PROCESS EACH MESG AND MIGRATE MEMBERS ---
+foreach ($mesg in $mesgGroups) {
+    Write-Host "Processing MESG: '$($mesg.DisplayName)' (Alias: $($mesg.Alias))"
+
+    # --- This is the mapping logic ---
+    # It checks if an M365 group exists with the same alias as the MESG.
+    # If your naming is different (e.g., M365 group is "M365-Sales" and MESG is "Sales"),
+    # you must change this line.
+    $targetAlias = $mesg.Alias
+    # --------------------------------
+
+    if ($m365GroupsHashTable.ContainsKey($targetAlias)) {
+        $correspondingM365Group = $m365GroupsHashTable[$targetAlias]
+        Write-Host "  [SUCCESS] Found corresponding M365 Group: '$($correspondingM365Group.DisplayName)'" -ForegroundColor Green
+
+        # Get members of the source MESG
+        try {
+            $members = Get-DistributionGroupMember -Identity $mesg.Identity -ResultSize Unlimited
+            if ($null -eq $members -or $members.Count -eq 0) {
+                Write-Host "  [INFO] This MESG has no members. Skipping."
+                Write-Host "-----------------------------------------------------"
+                continue # Skip to the next group in the main loop
+            }
+
+            Write-Host "  Found $($members.Count) members in '$($mesg.DisplayName)'. Adding to '$($correspondingM365Group.DisplayName)'..."
+
+            # Loop through each member and add them
+            foreach ($member in $members) {
+                Write-Host "    -> Adding member: '$($member.PrimarySmtpAddress)'..."
+                try {
+                    # Add the member to the M365 group
+                    Add-UnifiedGroupLinks -Identity $correspondingM365Group.Identity -LinkType Members -Links $member.PrimarySmtpAddress -Confirm:$false -ErrorAction Stop
+                    Write-Host "      ...Success." -ForegroundColor Green
+                } catch {
+                    # Catch common errors, like the member already existing
+                    if ($_.Exception.Message -like "*already a member*") {
+                        Write-Host "      ...Already a member (Informational)." -ForegroundColor Gray
+                    } else {
+                        Write-Warning "      ...Failed to add '$($member.PrimarySmtpAddress)'. Error: $($_.Exception.Message)"
+                    }
+                }
+            }
+        } catch {
+            Write-Warning "  [ERROR] Failed to get members for MESG '$($mesg.DisplayName)'. Error: $($_.Exception.Message)"
+        }
+
+    } else {
+        # This MESG did not have a matching M365 Group
+        Write-Host "  [SKIPPED] No corresponding M365 Group found with Alias '$targetAlias'." -ForegroundColor Yellow
+    }
+
+    Write-Host "-----------------------------------------------------"
+}
+
+Write-Host "Script complete." -ForegroundColor Cyan
+Write-Host "Remember to disconnect from Exchange Online by running: Disconnect-ExchangeOnline"
