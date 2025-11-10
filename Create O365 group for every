@@ -1,0 +1,88 @@
+<#
+.SYNOPSIS
+    Batch-creates Microsoft 365 Groups from a predefined list of department names.
+.DESCRIPTION
+    This script connects to Exchange Online, reads an array of department names,
+    and then loops through that array to create a new M365 Group for each department.
+    It includes error handling in case a group already exists.
+#>
+
+# ---
+# Step 1: Install and Import the ExchangeOnlineManagement Module
+# ---
+Write-Host "Checking for ExchangeOnlineManagement module..." -ForegroundColor Cyan
+$moduleName = "ExchangeOnlineManagement"
+
+if (-not (Get-Module -ListAvailable -Name $moduleName)) {
+    Write-Host "Module not found. Installing $moduleName..." -ForegroundColor Yellow
+    # Install the module for all users on the machine
+    Install-Module $moduleName -Repository PSGallery -Force -Scope AllUsers
+}
+else {
+    Write-Host "Module is already installed." -ForegroundColor Green
+}
+
+# Import the module into the current session
+Import-Module $moduleName
+
+# ---
+# Step 2: Connect to Exchange Online
+# ---
+Write-Host "Connecting to Exchange Online. Please authenticate in the pop-up window." -ForegroundColor Cyan
+# A browser window will open for you to authenticate.
+Connect-ExchangeOnline
+
+# ---
+# Step 3: Define Your List of Departments
+# ---
+# !! IMPORTANT: Modify this list to match your department names !!
+$departments = @(
+    "Sales",
+    "Marketing",
+    "Human Resources",
+    "IT",
+    "Finance",
+    "Operations",
+    "Executive"
+)
+
+Write-Host "Starting group creation for $($departments.Count) departments..." -ForegroundColor Cyan
+
+# ---
+# Step 4: Loop Through the List and Create Each Group
+# ---
+foreach ($dept in $departments) {
+    
+    # Create an alias for the email address (e.g., "HumanResources" from "Human Resources")
+    # Also removing any apostrophes for the alias
+    $alias = $dept -replace '\s', '' -replace "'", ""
+
+    Write-Host "Attempting to create group for '$dept' with alias '$($alias)'..."
+
+    # Run the command without Try/Catch or -ErrorAction
+    # We will check for success manually right after
+    New-UnifiedGroup -DisplayName $dept `
+                     -Alias $alias `
+                     -Notes "M365 Group for the $dept department" `
+                     -AccessType Private
+    
+    # Check the $? variable. It's $true if the last command succeeded, $false if it failed.
+    if ($?) {
+        Write-Host "Successfully created group: $dept" -ForegroundColor Green
+    }
+    else {
+        # This will catch errors like "group already exists"
+        Write-Warning "Failed to create group '$dept'. (The group may already exist)."
+    }
+    
+    # Adding a small pause to be nice to the API
+    Start-Sleep -Seconds 1
+}
+
+# ---
+# Step 5: Disconnect from the Session
+# ---
+Write-Host "All groups processed. Disconnecting from Exchange Online." -ForegroundColor Cyan
+Disconnect-ExchangeOnline -Confirm:$false
+
+Write-Host "Script complete." -ForegroundColor Green
