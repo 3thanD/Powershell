@@ -1,5 +1,5 @@
 # --- CONFIGURATION ---
-$TargetUsername = "Administrator"  # Enter the username here
+$TargetUsername = "**Username**"  # Enter the username here
 $DaysToSearch = 7         # Keep this low (e.g., 2-7 days) to speed it up
 # ---------------------
 
