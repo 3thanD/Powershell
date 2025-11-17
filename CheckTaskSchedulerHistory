@@ -1,0 +1,45 @@
+# --- CONFIGURATION ---
+$TargetDate   = "11/16/2025"  # "Date of Question" (Update if needed)
+$TargetTime   = "12:04 PM"    # The exact time the password was reset
+$TimeWindow   = 2             # Minutes (+/-) to search around that time
+# ---------------------
+
+# Create the search window
+$ReferenceTime = Get-Date "$TargetDate $TargetTime"
+$StartTime = $ReferenceTime.AddMinutes(-$TimeWindow)
+$EndTime = $ReferenceTime.AddMinutes($TimeWindow)
+
+Write-Host "Searching for Scheduled Tasks that ran between $($StartTime.ToShortTimeString()) and $($EndTime.ToShortTimeString())..." -ForegroundColor Cyan
+
+try {
+    # ID 100 = Task Started, ID 200 = Action Started
+    $Events = Get-WinEvent -LogName "Microsoft-Windows-TaskScheduler/Operational" -FilterXPath "*[System[(EventID=100 or EventID=200)]]" -ErrorAction Stop | 
+              Where-Object { $_.TimeCreated -ge $StartTime -and $_.TimeCreated -le $EndTime }
+
+    $Results = @()
+
+    foreach ($Event in $Events) {
+        # Convert to XML to get clean data
+        $Xml = [xml]$Event.ToXml()
+        
+        # Task Name is usually inside the Event Data
+        $TaskName = $Xml.Event.EventData.Data | Where-Object { $_.Name -eq "TaskName" } | Select-Object -ExpandProperty '#text'
+        
+        $Results += [PSCustomObject]@{
+            Time      = $Event.TimeCreated
+            TaskName  = $TaskName
+            EventID   = $Event.Id
+            Message   = "Task Started/Executed"
+        }
+    }
+
+    if ($Results) {
+        $Results | Sort-Object Time | Format-Table -AutoSize
+    } else {
+        Write-Host "No tasks found running exactly at that time on this machine." -ForegroundColor Red
+        Write-Host "Check if the 'Subject' in your previous report points to a DIFFERENT server." -ForegroundColor Gray
+    }
+}
+catch {
+    Write-Host "Error accessing Task Scheduler logs. (Is the log enabled?)" -ForegroundColor Red
+}
