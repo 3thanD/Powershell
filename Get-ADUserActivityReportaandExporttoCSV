@@ -1,0 +1,88 @@
+# --- CONFIGURATION ---
+$TargetUsername = "Administrator"  # Enter the username here
+$DaysToSearch = 7         # Keep this low (e.g., 2-7 days) to speed it up
+# ---------------------
+
+# Event IDs to look for:
+# 4723: User changed own password
+# 4724: Admin reset password
+# 4740: Account Locked Out
+# 4722/4725: Account Enabled/Disabled
+# 4767: Account Unlocked
+$EventIDs = @(4723, 4724, 4740, 4722, 4725, 4767)
+
+$DomainControllers = Get-ADDomainController -Filter *
+$AllEvents = @()
+
+Write-Host "Searching all DCs for ANY account activity for '$TargetUsername'..." -ForegroundColor Cyan
+
+foreach ($DC in $DomainControllers) {
+    Write-Host "Scanning $($DC.HostName)..." -NoNewline
+    try {
+        $Events = Get-WinEvent -ComputerName $DC.HostName -FilterHashtable @{
+            LogName   = 'Security'
+            ID        = $EventIDs
+            StartTime = (Get-Date).AddDays(-$DaysToSearch)
+        } -ErrorAction Stop
+
+        foreach ($Event in $Events) {
+            # Convert to XML for safer parsing
+            $Xml = [xml]$Event.ToXml()
+            $EventData = $Xml.Event.EventData.Data
+
+            # Extract Target User safely
+            $TargetUserRaw = ($EventData | Where-Object { $_.Name -eq "TargetUserName" }).'#text'
+            
+            # Some events (like 4723) use different field names usually, but 
+            # TargetUserName is standard for most. 
+            # 4723 often puts the user in 'TargetUserName' as well, but let's verify match.
+            
+            if ($TargetUserRaw -like "*$TargetUsername*") {
+                
+                # Determine Event Type
+                switch ($Event.Id) {
+                    4723 { $Type = "User Changed Own Pass" }
+                    4724 { $Type = "Admin Reset Pass" }
+                    4740 { $Type = "Account Locked Out" }
+                    4722 { $Type = "Account Enabled" }
+                    4725 { $Type = "Account Disabled" }
+                    4767 { $Type = "Account Unlocked" }
+                    Default { $Type = "Unknown ($($Event.Id))" }
+                }
+
+                # Find who did it (The Subject)
+                $SubjectUser = ($EventData | Where-Object { $_.Name -eq "SubjectUserName" }).'#text'
+                $SubjectDomain = ($EventData | Where-Object { $_.Name -eq "SubjectDomainName" }).'#text'
+
+                $AllEvents += [PSCustomObject]@{
+                    Time        = $Event.TimeCreated
+                    EventID     = $Event.Id
+                    Activity    = $Type
+                    TargetUser  = $TargetUserRaw
+                    PerformedBy = "$SubjectDomain\$SubjectUser"
+                    DC          = $DC.HostName
+                }
+            }
+        }
+        Write-Host " Done." -ForegroundColor Green
+    }
+    catch {
+        Write-Host " No events." -ForegroundColor DarkGray
+    }
+}
+
+Write-Host "`n--- ACCOUNT HISTORY ---" -ForegroundColor Yellow
+# --- OUTPUT TO CSV ---
+if ($AllEvents) {
+    $Path = "$env:USERPROFILE\Desktop\AccountEvents.csv"
+    
+    # Sort by time and export to CSV
+    $AllEvents | Sort-Object Time | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8
+    
+    Write-Host "Success! File saved to: $Path" -ForegroundColor Green
+    
+    # Attempt to open the file immediately
+    Invoke-Item $Path
+} else {
+    Write-Host "No events found to export." -ForegroundColor Red
+}
