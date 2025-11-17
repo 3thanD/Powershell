@@ -1,5 +1,5 @@
 # --- CONFIGURATION ---
-$TargetUsername = "Administrator" # The user account keeping getting reset
+$TargetUsername = "**Username**" # The user account keeping getting reset
 $DaysToSearch = 30
 # ---------------------
 
