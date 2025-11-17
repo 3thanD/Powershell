@@ -1,0 +1,71 @@
+# --- CONFIGURATION ---
+$TargetUsername = "**Username**"  # The SAMAccountName of the user who was reset
+$DaysToSearch = 30        # How far back to look
+# ---------------------
+
+Import-Module ActiveDirectory
+
+# Get the current domain context and list of Domain Controllers
+$DomainControllers = Get-ADDomainController -Filter *
+
+Write-Host "Searching for password reset events (ID 4724) for user '$TargetUsername'..." -ForegroundColor Cyan
+Write-Host "This may take a moment depending on log size and network speed." -ForegroundColor Gray
+
+$Results = @()
+
+foreach ($DC in $DomainControllers) {
+    Write-Host "Scanning $($DC.HostName)..." -NoNewline
+
+    try {
+        # Query the Security Log for Event 4724 within the timeframe
+        $Events = Get-WinEvent -ComputerName $DC.HostName -FilterHashtable @{
+            LogName   = 'Security'
+            ID        = 4724
+            StartTime = (Get-Date).AddDays(-$DaysToSearch)
+        } -ErrorAction Stop
+
+        foreach ($Event in $Events) {
+            # Convert Event to XML for precise property extraction
+            $Xml = [xml]$Event.ToXml()
+            $EventData = $Xml.Event.EventData.Data
+
+            # Extract the Target User (Who got reset)
+            $EventTargetUser = ($EventData | Where-Object { $_.Name -eq "TargetUserName" }).'#text'
+
+            # Check if this event matches the user we are looking for
+            if ($EventTargetUser -like "*$TargetUsername*") {
+                
+                # Extract Who did it (Subject)
+                $SubjectUser = ($EventData | Where-Object { $_.Name -eq "SubjectUserName" }).'#text'
+                $SubjectDomain = ($EventData | Where-Object { $_.Name -eq "SubjectDomainName" }).'#text'
+                
+                # Extract Timestamp
+                $Time = $Event.TimeCreated
+
+                # Add to results
+                $Results += [PSCustomObject]@{
+                    TimeReset     = $Time
+                    TargetUser    = $EventTargetUser
+                    PerformedBy   = "$SubjectDomain\$SubjectUser"
+                    DC_LoggedOn   = $DC.HostName
+                }
+            }
+        }
+        Write-Host " Done." -ForegroundColor Green
+    }
+    catch {
+        if ($_.Exception.Message -like "*No events were found*") {
+            Write-Host " No events found." -ForegroundColor DarkGray
+        } else {
+            Write-Host " Error: $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+}
+
+# --- OUTPUT ---
+Write-Host "`n--- SEARCH RESULTS ---" -ForegroundColor Yellow
+if ($Results) {
+    $Results | Sort-Object TimeReset | Format-Table -AutoSize
+} else {
+    Write-Host "No password reset events found for '$TargetUsername' in the last $DaysToSearch days." -ForegroundColor Red
+}
