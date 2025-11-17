@@ -1,0 +1,49 @@
+# --- CONFIGURATION ---
+$TargetUsername = "Administrator" # The user account keeping getting reset
+$DaysToSearch = 30
+# ---------------------
+
+Import-Module ActiveDirectory
+
+$DomainControllers = Get-ADDomainController -Filter *
+$SystemResets = @()
+
+foreach ($DC in $DomainControllers) {
+    Write-Host "Scanning $($DC.HostName) for SYSTEM/Service resets..." -ForegroundColor Cyan
+    
+    try {
+        $Events = Get-WinEvent -ComputerName $DC.HostName -FilterHashtable @{
+            LogName   = 'Security'
+            ID        = 4724
+            StartTime = (Get-Date).AddDays(-$DaysToSearch)
+        } -ErrorAction Stop
+
+        foreach ($Event in $Events) {
+            $Xml = [xml]$Event.ToXml()
+            $EventData = $Xml.Event.EventData.Data
+
+            $TargetUser = ($EventData | Where-Object { $_.Name -eq "TargetUserName" }).'#text'
+            $SubjectUser = ($EventData | Where-Object { $_.Name -eq "SubjectUserName" }).'#text'
+            $SubjectDomain = ($EventData | Where-Object { $_.Name -eq "SubjectDomainName" }).'#text'
+
+            # Filter for specific user AND if Subject is likely a system account
+            if ($TargetUser -like "*$TargetUsername*") {
+                # Check if Subject is SYSTEM, ANONYMOUS, or a Machine Account ($)
+                if ($SubjectUser -match "SYSTEM|ANONYMOUS|\$$") {
+                     $SystemResets += [PSCustomObject]@{
+                        Time      = $Event.TimeCreated
+                        Target    = $TargetUser
+                        Subject   = "$SubjectDomain\$SubjectUser"
+                        Reason    = "Automated/System Process"
+                        DC        = $DC.HostName
+                    }
+                }
+            }
+        }
+    }
+    catch {
+        # Ignore errors if no events found
+    }
+}
+
+$SystemResets | Format-Table -AutoSize
