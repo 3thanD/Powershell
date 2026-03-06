@@ -1,0 +1,17 @@
+Connect-exchangeOnline
+# Define the mailbox identity
+$MailboxIdentity = “User email"
+
+# Retrieve all folder statistics for the mailbox
+$AllFolders = Get-MailboxFolderStatistics -Identity $MailboxIdentity
+
+# Group the folders by Name and filter for groups that have more than 1 item
+$DuplicateGroups = $AllFolders | Group-Object -Property Name | Where-Object { $_.Count -gt 1 }
+
+# Check if any duplicates were found and output the results
+if ($DuplicateGroups) {
+    Write-Host "Duplicate folders found. Displaying paths..." -ForegroundColor Cyan
+    $DuplicateGroups | Select-Object -ExpandProperty Group | Select-Object Name, FolderPath, ItemsInFolder | Sort-Object Name
+} else {
+    Write-Host "No duplicate folder names found in the mailbox." -ForegroundColor Green
+}
