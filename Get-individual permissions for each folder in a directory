@@ -1,0 +1,33 @@
+$TargetDir = "C:\Your\Path\Here" # The folder you want to scan
+$SavePath  = "C:\Temp\PermissionsReport.csv" # Where the report will go
+
+# Create the Temp folder if it doesn't exist to prevent errors
+if (!(Test-Path "C:\Temp")) { New-Item -Path "C:\Temp" -ItemType Directory }
+
+$RootDepth = ($TargetDir.Split('\')).Count
+
+$Report = Get-ChildItem -Path $TargetDir -Recurse -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+    $Path = $_.FullName
+    $CurrentDepth = ($Path.Split('\')).Count - $RootDepth
+    $Acl = Get-Acl -Path $Path
+
+    foreach ($Access in $Acl.Access) {
+        [PSCustomObject]@{
+            FolderName      = $_.Name
+            Depth           = $CurrentDepth
+            Path            = $Path
+            Identity        = $Access.IdentityReference
+            Permissions     = $Access.FileSystemRights
+            IsInherited     = $Access.IsInherited
+            InheritanceType = $Access.InheritanceFlags
+        }
+    }
+}
+
+# This saves the file to the path defined above
+$Report | Export-Csv -Path $SavePath -NoTypeInformation -Encoding utf8
+
+# This opens the CSV file immediately in Excel (or your default CSV viewer)
+Invoke-Item $SavePath
+
+Write-Host "Scan Complete! File saved to $SavePath" -ForegroundColor Cyan
