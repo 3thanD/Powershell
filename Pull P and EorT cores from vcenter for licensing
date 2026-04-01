@@ -1,0 +1,10 @@
+PowerCLI C:\> Get-VMHost | Select-Object Name, Manufacturer, Model, NumCpu | Format-Table -AutoSize
+ 
+or 
+
+Get-VMHost | Select-Object Name,
+   @{N="Manufacturer"; E={$_.ExtensionData.Summary.Hardware.Vendor}},
+   @{N="Model"; E={$_.ExtensionData.Summary.Hardware.Model}},
+   @{N="NumCpuCores"; E={$_.ExtensionData.Summary.Hardware.NumCpuCores}},
+   @{N="NumCpuThreads"; E={$_.ExtensionData.Summary.Hardware.NumCpuThreads}} |
+Format-Table -AutoSize
