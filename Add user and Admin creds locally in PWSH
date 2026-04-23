@@ -1,0 +1,7 @@
+How to add a user through CMD:
+ 
+net user /add [username] [password]
+ 
+How to make user local admin through CMD:
+ 
+net localgroup administrators [username] /add
