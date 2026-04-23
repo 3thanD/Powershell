@@ -1,0 +1,11 @@
+#Create a .PS1 asnd put it in the path C:/Users/Admin/Documents/WindowsPowerShell and run it with admin rights# 
+#Script attribution to Will Urquhart#
+
+function Get-SwitchInfo {
+	$Packet = Invoke-DiscoveryProtocolCapture -Type LLDP
+	Get-DiscoveryProtocolData -Packet $Packet
+}
+ 
+function Get-IPaddress { 
+	(Invoke-WebRequest -uri "https://api.ipify.org/").Content
+}
