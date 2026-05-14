@@ -1,0 +1,6 @@
+###
+Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
+Install-Module -Name PSDiscoveryProtocol
+$Packet = Invoke-DiscoveryProtocolCapture -Type LLDP
+Get-DiscoveryProtocolData -Packet $Packet
+###
