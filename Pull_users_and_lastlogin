@@ -1,0 +1,44 @@
+# Ensure the Active Directory module is loaded
+Import-Module ActiveDirectory
+
+# ==============================================================================
+# CONFIGURATION VARIABLES
+# ==============================================================================
+
+# Define where you want the file saved
+$ExportPath = "C:\AD_LastLogon_Report.csv"
+
+# Define the target Distinguished Name (DN) for granular searches.
+# Example: "OU=Remote Users,OU=Employees,DC=YourDomain,DC=com"
+# Note: Leave this blank ("") to search the entire domain.
+$SearchBaseDN = "OU=YourTargetOU,DC=YourDomain,DC=com"
+
+# ==============================================================================
+# SCRIPT EXECUTION
+# ==============================================================================
+
+# Set up the base command parameters
+$ADParams = @{
+    Filter     = "*"
+    Properties = "LastLogonDate", "Enabled"
+}
+
+# If a specific DN was provided, add it to the search parameters
+if (![string]::IsNullOrWhiteSpace($SearchBaseDN)) {
+    $ADParams.Add('SearchBase', $SearchBaseDN)
+    Write-Host "Scoping search to: $SearchBaseDN" -ForegroundColor Cyan
+} else {
+    Write-Host "No Search Base provided. Scanning entire domain..." -ForegroundColor Cyan
+}
+
+# Fetch users and export
+Get-ADUser @ADParams | 
+    Select-Object Name, 
+                  SamAccountName, 
+                  UserPrincipalName, 
+                  @{Name="AccountStatus"; Expression={if($_.Enabled){"Active"}else{"Disabled"}}},
+                  LastLogonDate | 
+    Sort-Object LastLogonDate -Descending | 
+    Export-Csv -Path $ExportPath -NoTypeInformation
+
+Write-Host "Report successfully exported to $ExportPath" -ForegroundColor Green
