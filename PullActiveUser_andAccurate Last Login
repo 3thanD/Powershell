@@ -1,0 +1,94 @@
+# Ensure the Active Directory module is loaded
+Import-Module ActiveDirectory
+
+# ==============================================================================
+# CONFIGURATION VARIABLES
+# ==============================================================================
+
+# 1. Put your target Distinguished Name (DN) right here
+$SearchBaseDN = "OU=YourTargetOU,DC=YourDomain,DC=com"
+
+# 2. Define where you want the file saved
+$ExportPath = "C:\RealTime_OU_LastLogon.csv"
+
+# ==============================================================================
+# SCRIPT EXECUTION
+# ==============================================================================
+
+# Get all Domain Controllers
+$DCList = Get-ADDomainController -Filter * | Select-Object -ExpandProperty Name
+
+# Create an empty Hash Table to store our aggregated user data in memory
+$UserTable = @{}
+
+Write-Host "Starting real-time multi-DC audit for OU: $SearchBaseDN" -ForegroundColor Cyan
+
+# Loop through each DC exactly once
+foreach ($DC in $DCList) {
+    Write-Host "  -> Querying Domain Controller: $DC" -ForegroundColor Yellow
+    
+    # Pull the whole OU from this specific DC. SilentlyContinue skips offline DCs.
+    $UsersOnDC = Get-ADUser -Filter * -SearchBase $SearchBaseDN -Properties lastLogon, userAccountControl -Server $DC -ErrorAction SilentlyContinue
+
+    foreach ($User in $UsersOnDC) {
+        $SAM = $User.SamAccountName
+        $LogonInt = $User.lastLogon
+
+        # If we haven't seen this user yet, add them to our table
+        if (-not $UserTable.ContainsKey($SAM)) {
+            $UserTable[$SAM] = @{
+                Name         = $User.Name
+                SAM          = $SAM
+                DN           = $User.DistinguishedName
+                UAC          = $User.userAccountControl
+                HighestLogon = $LogonInt
+            }
+        } 
+        # If we HAVE seen them, check if this DC has a more recent timestamp
+        else {
+            if ($LogonInt -gt $UserTable[$SAM].HighestLogon) {
+                $UserTable[$SAM].HighestLogon = $LogonInt
+            }
+        }
+    }
+}
+
+Write-Host "Aggregating data and generating CSV..." -ForegroundColor Cyan
+
+# Process the in-memory table to format dates and status, then output standard objects
+$FinalReport = foreach ($Key in $UserTable.Keys) {
+    $UserData = $UserTable[$Key]
+    
+    # --- FAILSAFE 1: Strict Bitmask check for Status ---
+    $Status = "Active"
+    if ($null -ne $UserData.UAC -and ($UserData.UAC -band 2)) {
+        $Status = "Disabled"
+    }
+
+    # --- FAILSAFE 2: Safe Date Conversion (The 1601 Fix) ---
+    $FinalDate = "Never Logged In"
+    if ($UserData.HighestLogon -gt 0) {
+        try {
+            $ParsedDate = [datetime]::FromFileTime($UserData.HighestLogon)
+            if ($ParsedDate.Year -gt 1601) {
+                $FinalDate = $ParsedDate.ToString("yyyy-MM-dd HH:mm:ss")
+            }
+        } catch {
+            $FinalDate = "Date Parse Error"
+        }
+    }
+
+    # Build the clean object for the CSV row
+    [PSCustomObject]@{
+        Name              = $UserData.Name
+        SamAccountName    = $UserData.SAM
+        AccountStatus     = $Status
+        RealTimeLastLogon = $FinalDate
+        DistinguishedName = $UserData.DN
+    }
+}
+
+# Export the final array to CSV, sorting by newest login first
+$FinalReport | Sort-Object RealTimeLastLogon -Descending | Export-Csv -Path $ExportPath -NoTypeInformation
+
+Write-Host "Done! Real-time report successfully exported to $ExportPath" -ForegroundColor Green
